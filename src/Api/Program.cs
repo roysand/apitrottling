@@ -13,28 +13,28 @@ var builder = WebApplication.CreateBuilder(args);
 var config = new Config(builder.Configuration);
 
 // Add services to the container.
-builder.Services.AddRateLimiter(options =>
-{
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
-        RateLimitPartition.GetSlidingWindowLimiter(
-            partitionKey: httpContext.User.Identity?.Name ?? httpContext.Request.Headers.Host.ToString(),
-            factory: partition => new SlidingWindowRateLimiterOptions()
-            {
-                AutoReplenishment = true,
-                PermitLimit = 100,
-                QueueLimit = 0,
-                SegmentsPerWindow = 60,
-                Window = TimeSpan.FromMinutes(1)
-            }));
-    
-    options.OnRejected = async (context, token) =>
-    {
-        context.HttpContext.Response.StatusCode = 429;
-        
-        await context.HttpContext.Response.WriteAsync(
-                "Too many requests. Please try again later!");
-    };
-});
+// builder.Services.AddRateLimiter(options =>
+// {
+//     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+//         RateLimitPartition.GetSlidingWindowLimiter(
+//             partitionKey: httpContext.User.Identity?.Name ?? httpContext.Request.Headers.Host.ToString(),
+//             factory: partition => new SlidingWindowRateLimiterOptions()
+//             {
+//                 AutoReplenishment = true,
+//                 PermitLimit = 100,
+//                 QueueLimit = 0,
+//                 SegmentsPerWindow = 60,
+//                 Window = TimeSpan.FromMinutes(1)
+//             }));
+//     
+//     options.OnRejected = async (context, token) =>
+//     {
+//         context.HttpContext.Response.StatusCode = 429;
+//         
+//         await context.HttpContext.Response.WriteAsync(
+//                 "Too many requests. Please try again later!");
+//     };
+// });
 
 ConfigureServices(builder.Services);
 
@@ -60,6 +60,7 @@ app.Run();
 
 void ConfigureServices(IServiceCollection services)
 {
+    ConfigureRateLimiter(services);
     services.AddSingleton<Microsoft.Extensions.Logging.ILogger>(provider =>
         provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Program>>());
     
@@ -77,24 +78,29 @@ void ConfigureApplication(WebApplication app)
     app.UseRequestBodyLogging();
 }
 
-RateLimiterOptions ConfigureRateLimiter()
+void ConfigureRateLimiter(IServiceCollection services)
 {
-    var rateLimiter = new RateLimiterOptions();
-    rateLimiter.AddSlidingWindowLimiter(policyName: "sliding", options =>
+    services.AddRateLimiter(options =>
     {
-        options.PermitLimit = 5;
-        options.Window = TimeSpan.FromSeconds(30);
-        options.SegmentsPerWindow = 3;
-        options.QueueLimit = 0;
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+            RateLimitPartition.GetSlidingWindowLimiter(
+                partitionKey: httpContext.User.Identity?.Name ?? httpContext.Request.Headers.Host.ToString(),
+                factory: partition => new SlidingWindowRateLimiterOptions()
+                {
+                    AutoReplenishment = true,
+                    PermitLimit = 100,
+                    QueueLimit = 0,
+                    SegmentsPerWindow = 60,
+                    Window = TimeSpan.FromMinutes(1)
+                }));
+    
+        options.OnRejected = async (context, token) =>
+        {
+            context.HttpContext.Response.StatusCode = 429;
+        
+            await context.HttpContext.Response.WriteAsync(
+                "Too many requests. Please try again later!");
+        };
     });
-    rateLimiter.OnRejected = (context, cancellationToken) =>
-    {
-        context.HttpContext.Response.WriteAsync("Too many requests. Please try again later.");
-
-        return new ValueTask();
-    };
-    rateLimiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-
-    return rateLimiter;
 }
 
