@@ -15,7 +15,7 @@ export const options = {
 };
 
 export default function () {
-  let response = http.get('https://localhost:44361/api/getdate');
+  let response = http.get('https://localhost:6000/api/getdate');
   check(response, {
     'is status 200': (r) => r.status === 200
 });
